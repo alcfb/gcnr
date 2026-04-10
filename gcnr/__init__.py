@@ -1,1 +1,1 @@
-from .eos import eos
+from . import eos
