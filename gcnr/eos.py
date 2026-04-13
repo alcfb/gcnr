@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import scipy.constants as const
-from scipy.interpolate import LinearNDInterpolator
+from scipy.interpolate import LinearNDInterpolator#, RBFInterpolator
 from scipy import optimize
 
 atm = 1.01325e+5 # Pa
@@ -10,10 +10,11 @@ class EOS:
     def __init__(self, method):
         self.filename = os.path.join (os.path.dirname (__file__), 'data', f'uranium_eos_{method:}.txt')
 
-    def setup (self, p, t, d):
-        self.points = np.array ([p, t]).T
-        self.values = d
-        self.interp = LinearNDInterpolator (self.points, self.values)
+    def setup (self, p, t, *pars):
+        points = np.array ([p, t]).T
+        values = np.array (pars).T
+        self.interp = LinearNDInterpolator (points, values)
+        #self.interp = RBFInterpolator(self.points, self.values, degree='cubic')
 
 class U_Ievlev(EOS):
     def __init__ (self):
@@ -31,15 +32,15 @@ class U_Parks(EOS):
 
         EOS.__init__(self, 'parks')
 
-        p, t, d = np.loadtxt (self.filename).T
+        p, t, d, e, cv, cp = np.loadtxt (self.filename).T
 
         p *= 1.01325e+5 # 1 atm     => 1 Pa
         d *= 1.00000e+3 # 1 g/cm3   => 1 kg/m3
-        #e *= 4.18400e+6 # 1 cal/g   => 1 J/kg
-        #cv*= 4.18400e+6 # 1 cal/g/K => 1 J/kg/K
-        #cp*= 4.18400e+6 # 1 cal/g/K => 1 J/kg/K
+        e *= 4.18400e+6 # 1 cal/g   => 1 J/kg
+        cv*= 4.18400e+6 # 1 cal/g/K => 1 J/kg/K
+        cp*= 4.18400e+6 # 1 cal/g/K => 1 J/kg/K
 
-        self.setup(p, t, d)
+        self.setup (p, t, d, e, cv, cp)
 
 
 class EOS_U:
