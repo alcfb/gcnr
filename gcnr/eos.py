@@ -12,7 +12,7 @@ from scipy.interpolate import LinearNDInterpolator
 class units:
     atm = 1.01325e+5  # Pa
     bar = 1.e+5       # Pa
-
+    cal = 4.184e3     # J
 
 # =========================
 # Result container
@@ -66,6 +66,23 @@ class _U_Ievlev(_EOSModel):
 
         self.interp = LinearNDInterpolator(points, values)
 
+# =========================
+# Koroteyev model
+# =========================
+class _U_Koroteyev(_EOSModel):
+    def _build(self, data):
+
+        p, T, k = data
+
+        # Unit conversions
+        p *= units.atm # Pa
+        k *= units.cal * 1.E+3 / 3600. # W/(m K)
+
+        points = np.column_stack((p, T))
+        values = np.column_stack((k,))
+
+        self.interp = LinearNDInterpolator(points, values)
+
 
 # =========================
 # Parks model
@@ -102,6 +119,9 @@ class UraniumEOS:
         elif method == "parks":
             self._model = _U_Parks(filename)
 
+        elif method == "koroteyev":
+            self._model = _U_Koroteyev(filename)
+
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -121,6 +141,13 @@ class UraniumEOS:
         return self._model.evaluate(p, T)
 
     # -------- properties --------
+    def conductivity(self, p, T, p_unit="Pa"):
+        if self.method != "koroteyev":
+            raise NotImplementedError("Energy not available for this EOS")
+        p = self._convert_pressure(p, p_unit)
+        out = self._eval(p, T)
+        return out[..., 0]
+
     def rho(self, p, T, p_unit="Pa"):
         p = self._convert_pressure(p, p_unit)
         out = self._eval(p, T)

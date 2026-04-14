@@ -12,6 +12,38 @@ class Result(dict):
     def __getattr__(self, key):
         return self[key]
 
+    def plot(self, fname=None, dpi=140):
+        """
+        Plot selected variables vs time.
+
+        Usage:
+            res.plot("power_MW", "temperature_K")
+            res.plot()  # plots all except time
+        """
+        import matplotlib.pyplot as plt
+
+        t = self["time"]
+
+        fig, ax1 = plt.subplots (figsize=(6,4), dpi=dpi)
+        ax2 = ax1.twinx()
+
+        ax1.plot (t, self['power_MW'], label='P', linestyle='-', color='blue')
+
+        ax2.plot (t, self['temperature_K'], label='Tf', linestyle='--', color='red')
+
+        ax1.set_xlabel("Time [s]")
+        ax1.set_ylabel("P [MW]")
+        ax2.set_ylabel("Tf [K]")
+
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2)
+
+        ax1.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+
 
 # --- Solver ---
 class Solver:
@@ -33,7 +65,7 @@ class Solver:
         t = np.array(times)
         x = np.array(states)
 
-        return self.format_output(t, x)
+        return self.format_output(t, x, info)
 
     def _print_step(self, t, x):
         print(f"time={t:12.6e}s x={x}")
@@ -49,7 +81,7 @@ class ntp_gcr (Solver):
         neutron_lifetime=8.35e-4,     # s
         decay_constant=0.1,           # 1/s
         temp_feedback=-20.0,          # pcm/K
-        heat_capacity=0.7e6,          # J/kg/K
+        heat_capacity=5.0e5,          # J/kg/K
         mass=2.0,                     # kg
         fuel_temp_ref=1.8e4,          # K
         sink_temp=1e3,                # K
@@ -138,11 +170,13 @@ class ntp_gcr (Solver):
             f"Temp={x[2]:12.6e}K"
         )
 
-    def format_output(self, t, x):
+    def format_output(self, t, x, info):
         return Result({
             "time": t,
             "power_MW": x[:, 0] * 1e-6,
             "precursor": x[:, 1],
             "temperature_K": x[:, 2],
+            "rejected_steps": info.rejected_steps,
+            "successful_steps": info.successful_steps,
         })
 

@@ -23,3 +23,11 @@ for p in [100,105,110,120,130]:
         f"E={s.energy:9.3e} J/kg  "
         f"Cv={s.cv:9.3e} J/kg/K"
     )
+
+
+print("(Koroteyev, 2002)")
+U = gcnr.eos.UraniumEOS(method="koroteyev")
+
+for p in [100,105,110,120,130]:
+    kappa = U.conductivity (p=p, T=t, p_unit="atm")
+    print(f"U: T={t} K   P={p} atm => K={kappa*1.E-6:6.3f} MW/(m K)")
