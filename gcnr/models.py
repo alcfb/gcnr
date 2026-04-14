@@ -64,7 +64,7 @@ class ntp_gcr (Solver):
         self.x = np.ones(3)
 
         # --- Reactivity ---
-        self.rho = lambda t: 50.0
+        self.rho = lambda t: 0.0
 
         # --- Parameters ---
         self.neutron_lifetime = neutron_lifetime
@@ -94,6 +94,11 @@ class ntp_gcr (Solver):
         self.rad_coeff = self.S * self.emissivity * const.sigma / (
             self.heat_capacity * self.mass
         )
+    def steady_state(self):
+        power = self.S * self.emissivity * const.sigma * (self.fuel_temp_ref**4 - self.sink_temp**4)
+        self.x[0] = power
+        self.x[1] = self.delayed_fraction * units.pcm / self.neutron_lifetime / self.decay_constant * power
+        self.x[2] = self.fuel_temp_ref
 
     def dynamics(self, h, t, b, x, e):
         """
