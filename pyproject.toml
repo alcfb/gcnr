@@ -5,9 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gcnr"
 version = "0.1.0"
-description = "Gaseous Core Nuclear Reactor"
+description = "Gaseous Core Nuclear Reactors"
 authors = [
   { name="CA41", email="alexey.cherezov@psi.ch" }
+  { name="PJ41", email="jan.piaskowy@psi.ch" }
 ]
 readme = "README.md"
 license = { text = "MIT" }

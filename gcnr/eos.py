@@ -1,93 +1,168 @@
+#!/usr/bin/env python3
 import os
 import numpy as np
-import scipy.constants as const
-from scipy.interpolate import LinearNDInterpolator#, RBFInterpolator
-from scipy import optimize
-
-atm = 1.01325e+5 # Pa
-
-class EOS:
-    def __init__(self, method):
-        self.filename = os.path.join (os.path.dirname (__file__), 'data', f'uranium_eos_{method:}.txt')
-
-    def setup (self, p, t, *pars):
-        points = np.array ([p, t]).T
-        values = np.array (pars).T
-        self.interp = LinearNDInterpolator (points, values)
-        #self.interp = RBFInterpolator(self.points, self.values, degree='cubic')
-
-class U_Ievlev(EOS):
-    def __init__ (self):
-
-        EOS.__init__(self, 'ievlev')
-
-        p, t, d = np.loadtxt (self.filename).T
-
-        p *= atm   # Pa
-
-        self.setup(p, t, d)
-
-class U_Parks(EOS):
-    def __init__ (self):
-
-        EOS.__init__(self, 'parks')
-
-        p, t, d, e, cv, cp = np.loadtxt (self.filename).T
-
-        p *= 1.01325e+5 # 1 atm     => 1 Pa
-        d *= 1.00000e+3 # 1 g/cm3   => 1 kg/m3
-        e *= 4.18400e+6 # 1 cal/g   => 1 J/kg
-        cv*= 4.18400e+6 # 1 cal/g/K => 1 J/kg/K
-        cp*= 4.18400e+6 # 1 cal/g/K => 1 J/kg/K
-
-        self.setup (p, t, d, e, cv, cp)
+from pathlib import Path
+from dataclasses import dataclass
+from scipy.interpolate import LinearNDInterpolator
 
 
-class EOS_U:
-    def __init__(self):
-
-        self.methods = {
-            'parks': U_Parks(), 
-            'ievlev' : U_Ievlev(),
-        }
-
-    def query (self, p, t, method='ievlev'):
-
-        den = self.methods [method].interp (p, t) # kg/m3
-
-        if np.isnan(den).any():
-            print(f"Warning: Point ({p}, {t}) is outside the data boundary.")
-
-        return den
+# =========================
+# Constants
+# =========================
+class units:
+    atm = 1.01325e+5  # Pa
+    bar = 1.e+5       # Pa
 
 
-class EOS_UF6:
-    def __init__ (self):
-        pass
-
-    def query (self, p, t):
-        "Van der Waals gas"
-        R = 8.31 # J / K / mol
-        M0 = (233. + 6 * 18.998) * 1.e-3 # kg/mol
-
-        tc = 518. # K
-        pc = 64.E+5 # Pa
-
-        a = 27 / 64 * tc**2 / pc
-        b = tc / 8 / pc
-
-        fun = lambda x: (p + a * x**2) * (1 - x * b) - x * R * t
-
-        sol = optimize.root (fun, 100)
-
-        den = sol.x[0] * M0
-
-        return den
+# =========================
+# Result container
+# =========================
+@dataclass
+class State:
+    rho: float
+    energy: float | None = None
+    cv: float | None = None
+    cp: float | None = None
 
 
-U = EOS_U()
+# =========================
+# Base EOS model (internal)
+# =========================
+class _EOSModel:
+    def __init__(self, filename):
+        self.filename = Path(filename)
+        self.interp = None
+        self._load()
 
-UF6 = EOS_UF6()
+    def _load(self):
+        if not self.filename.exists():
+            raise FileNotFoundError(f"{self.filename} not found")
+
+        data = np.loadtxt(self.filename).T
+        self._build(data)
+
+    def _build(self, data):
+        raise NotImplementedError
+
+    def evaluate(self, p, T):
+        out = self.interp(p, T)
+
+        if np.isnan(out).any():
+            raise ValueError(f"Point (p={p}, T={T}) outside interpolation domain")
+
+        return np.atleast_1d(out)
 
 
+# =========================
+# Ievlev model
+# =========================
+class _U_Ievlev(_EOSModel):
+    def _build(self, data):
+        p, T, rho = data
+        p *= units.atm
+
+        points = np.column_stack((p, T))
+        values = np.column_stack((rho,))
+
+        self.interp = LinearNDInterpolator(points, values)
+
+
+# =========================
+# Parks model
+# =========================
+class _U_Parks(_EOSModel):
+    def _build(self, data):
+        p, T, rho, e, cv, cp = data
+
+        # Unit conversions
+        p *= units.atm
+        rho *= 1e3
+        e *= 4.184e6
+        cv *= 4.184e6
+        cp *= 4.184e6
+
+        points = np.column_stack((p, T))
+        values = np.column_stack((rho, e, cv, cp))
+
+        self.interp = LinearNDInterpolator(points, values)
+
+
+# =========================
+# Public Uranium EOS API
+# =========================
+class UraniumEOS:
+    def __init__(self, method="ievlev", data_dir="data"):
+        self.method = method
+
+        filename = os.path.join (os.path.dirname (__file__), 'data', f"uranium_eos_{method}.txt")
+
+        if method == "ievlev":
+            self._model = _U_Ievlev(filename)
+
+        elif method == "parks":
+            self._model = _U_Parks(filename)
+
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+    # -------- units --------
+    def _convert_pressure(self, p, unit):
+        if unit == "Pa":
+            return p
+        elif unit == "bar":
+            return np.asarray(p) * units.bar
+        elif unit == "atm":
+            return np.asarray(p) * units.atm
+        else:
+            raise ValueError(f"Unknown pressure unit: {unit}")
+
+    # -------- core eval --------
+    def _eval(self, p, T):
+        return self._model.evaluate(p, T)
+
+    # -------- properties --------
+    def rho(self, p, T, p_unit="Pa"):
+        p = self._convert_pressure(p, p_unit)
+        out = self._eval(p, T)
+        return out[..., 0]
+
+    def energy(self, p, T, p_unit="Pa"):
+        if self.method != "parks":
+            raise NotImplementedError("Energy not available for this EOS")
+
+        p = self._convert_pressure(p, p_unit)
+        out = self._eval(p, T)
+        return out[..., 1]
+
+    def cv(self, p, T, p_unit="Pa"):
+        if self.method != "parks":
+            raise NotImplementedError("Cv not available for this EOS")
+
+        p = self._convert_pressure(p, p_unit)
+        out = self._eval(p, T)
+        return out[..., 2]
+
+    def cp(self, p, T, p_unit="Pa"):
+        if self.method != "parks":
+            raise NotImplementedError("Cp not available for this EOS")
+
+        p = self._convert_pressure(p, p_unit)
+        out = self._eval(p, T)
+        return out[..., 3]
+
+    # -------- convenience --------
+    def state(self, p, T, p_unit="Pa"):
+        p = self._convert_pressure(p, p_unit)
+        out = self._eval(p, T)
+
+        if self.method == "ievlev":
+            return State(rho=out[..., 0])
+
+        elif self.method == "parks":
+            return State(
+                rho=out[..., 0],
+                energy=out[..., 1],
+                cv=out[..., 2],
+                cp=out[..., 3],
+            )
 
