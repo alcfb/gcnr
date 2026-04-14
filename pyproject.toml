@@ -7,7 +7,7 @@ name = "gcnr"
 version = "0.1.0"
 description = "Gaseous Core Nuclear Reactors"
 authors = [
-  { name="CA41", email="alexey.cherezov@psi.ch" }
+  { name="CA41", email="alexey.cherezov@psi.ch" },
   { name="PJ41", email="jan.piaskowy@psi.ch" }
 ]
 readme = "README.md"
@@ -15,5 +15,6 @@ license = { text = "MIT" }
 dependencies = [
   "numpy"
 ]
+requires-python = ">=3.8"
 [tool.setuptools.package-data]
 "gcnr.data" = ["*.txt"]
