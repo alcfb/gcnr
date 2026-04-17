@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gcnr"
-version = "0.1.0"
+version = "0.1.1"
 description = "Gaseous Core Nuclear Reactors"
 authors = [
   { name="CA41", email="alexey.cherezov@psi.ch" },

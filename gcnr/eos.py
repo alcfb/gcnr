@@ -3,7 +3,7 @@ import os
 import numpy as np
 from pathlib import Path
 from dataclasses import dataclass
-from scipy.interpolate import LinearNDInterpolator
+from scipy.interpolate import LinearNDInterpolator, interp1d
 
 
 # =========================
@@ -83,6 +83,35 @@ class _U_Koroteyev(_EOSModel):
 
         self.interp = LinearNDInterpolator(points, values)
 
+        # to extrapolate for values below 100 atm
+        # build 1d interpolators for ranges between 100 atm to 200 atm
+        p_100 = 100 * units.atm
+        p_200 = 200 * units.atm
+
+        mask_100 = np.isclose(p, p_100)
+        mask_200 = np.isclose(p, p_200)
+
+        self._T_100 = T[mask_100]
+        self._k_100 = k[mask_100]
+        self._T_200 = T[mask_200]
+        self._k_200 = k[mask_200]
+
+        self._interp_100 = interp1d(self._T_100, self._k_100, kind='linear')
+        self._interp_200 = interp1d(self._T_200, self._k_100, kind='linear')
+
+        self._p_100 = p_100
+        self._p_200 = p_200
+
+    def extrapolate(self, p, T):
+        """Linear extrapolation in pressure for p < 100 atm using 100 & 200 atm data."""
+        k_100 = self._interp_100(T)
+        k_200 = self._interp_200(T)
+
+        # Linear extrapolation: k(p) = k_lo + (p - p_lo) * (k_hi - k_lo) / (p_hi - p_lo)
+        k = k_100 + (p - self._p_100) * (k_200 - k_100) / (self._p_200 - self._p_100)
+
+        return np.atleast_1d(k)
+
 
 # =========================
 # Parks model
@@ -141,10 +170,20 @@ class UraniumEOS:
         return self._model.evaluate(p, T)
 
     # -------- properties --------
-    def conductivity(self, p, T, p_unit="Pa"):
+    def conductivity(self, p, T, p_unit="Pa", extrapolation=False):
         if self.method != "koroteyev":
-            raise NotImplementedError("Energy not available for this EOS")
+            raise NotImplementedError("Conductivity not available for this EOS")
         p = self._convert_pressure(p, p_unit)
+
+        p_min = 100 * units.atm
+        if np.any(np.asarray(p) < p_min):
+            if not extrapolation:
+                raise ValueError(
+                    f"Pressure {p} Pa is below the interpolation domain (100 atm). "
+                    f"Set extrapolation=True to enable linear extrapolation."
+                )
+            return self._model.extrapolate(p, T)
+
         out = self._eval(p, T)
         return out[..., 0]
 
