@@ -1,0 +1,14 @@
+LICENSE
+README.md
+pyproject.toml
+gcnr/__init__.py
+gcnr/eos.py
+gcnr/models.py
+gcnr.egg-info/PKG-INFO
+gcnr.egg-info/SOURCES.txt
+gcnr.egg-info/dependency_links.txt
+gcnr.egg-info/requires.txt
+gcnr.egg-info/top_level.txt
+gcnr/data/uranium_eos_ievlev.txt
+gcnr/data/uranium_eos_koroteyev.txt
+gcnr/data/uranium_eos_parks.txt
