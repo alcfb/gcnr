@@ -21,7 +21,7 @@ from . import tools
 #
 # 4. Thermal Radiation
 #
-#    C M dT/dt = P + S * e * sigma * (T0^4 - T^4)
+#    Cv M dT/dt = P + gamma * (T0^4 - T^4)
 #
 # =============================================================================
 
@@ -36,11 +36,11 @@ params = {
     'D1'  :-0.3,      # Reflector temperature coefficient, pcm/K
     'cv'  : 5.0e+5,   # heat_capacity, J/kg/K
     'mf'  : 2.0,      # fuel mass, kg
-    'T1'  : 18000.,   # nominal fuel temperature, K
+    'T1'  : 20000.,   # nominal fuel temperature, K
     'T0'  : 1000.,    # coolant temperature, K
     'lf'  : 2.0,      # fuel cloud length, m
     'rf'  : 0.4,      # fuel cloud radius, m
-    'ef'  : 0.1,      # fuel emissivity, -
+    'ef'  : 1.0,      # fuel emissivity, -
     'lam' : [0.1],    # 1/s
     'bet' : [280.],   # pcm
 }
@@ -71,6 +71,7 @@ class model (tools.Solver):
         self.eye = np.eye(rank)
         self.mat = np.zeros((rank, rank))
         self.src = np.zeros(rank)
+        self.dx  = np.zeros(rank)
 
         self.vf = units.pi * self.rf**2 * self.lf
         self.sf = 2 * units.pi * (self.rf * self.lf + self.rf**2)
@@ -78,19 +79,51 @@ class model (tools.Solver):
         self.alpha = self.cv * self.mf
         self.gamma = self.sf * self.ef * const.sigma
 
-    def steady_state (self):
-        P = self.sf * self.ef * units.sigma * (self.T1**4 - self.T0**4)
-        self.x[0] = P
-        self.x[1:-1] = units.pcm * self.bet / self.l0 / self.lam * P
-        self.x[-1] = self.T1
-
-    def dynamics(self, h, t, b, x, e):
+    def steady_state (self, u):
         """
-        Implicit step: x - h f(t,x) = b
+        Jacobi matrix: f(x,u) = 0
+        """
+
+        self.x[-1] = - u[0] / self.D0 + self.T1
+
+        self.x[0] = self.gamma * u[1] * (self.x[-1]**4 - self.T0**4)
+
+        self.x[1:-1] = units.pcm * self.bet / self.l0 / self.lam * self.x[0]
+
+        return self.x
+
+
+    def jacobian (self, x, u):
+        """
+        Jacobi matrix: df(x,u)/dx
+        """
+
+        rho = u[0] + self.D0 * (x[-1] - self.T1)
+
+        A = self.mat
+
+        A.fill(0.0)
+
+        A[0, 0] = (rho - sum(self.bet)) * units.pcm / self.l0
+        A[0,-1] = self.D0 * units.pcm / self.l0 * x[0]
+        A[0, 1:-1] = self.lam
+        A[1:-1, 0] = self.bet / self.l0 * units.pcm
+
+        np.fill_diagonal (A [1:-1, 1:-1], -self.lam)
+
+        A[-1, 0] = 1.0 / self.alpha
+        A[-1,-1] = - 4 * u[1] * self.gamma / self.alpha * x[-1]**3
+
+        return A
+
+
+    def dynamics (self, h, t, b, x, e, u):
+        """
+        Implicit step: x - h f(t,x,u) = b
         """
 
         # Reactivity
-        rho = self.rho(t) + self.D0 * (x[-1] - self.T1)
+        rho = self.rho(t) + u[0] + self.D0 * (x[-1] - self.T1)
 
         # Matrix A
         A = self.mat
@@ -104,12 +137,12 @@ class model (tools.Solver):
         np.fill_diagonal (A [1:-1, 1:-1], -self.lam)
 
         A[-1, 0] = 1.0 / self.alpha
-        A[-1,-1] = - self.gamma / self.alpha * x[-1]**3
+        A[-1,-1] = - self.gamma * u[1] / self.alpha * x[-1]**3
 
         # RHS
         rhs = self.src
         rhs[:] = b
-        rhs[-1] += h * self.gamma / self.alpha * self.T0**4
+        rhs[-1] += h * self.gamma * u[1] / self.alpha * self.T0**4
 
         # Solve
         A[:] = self.eye - h * A

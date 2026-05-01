@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 import numpy as np
-import scipy.constants as const
 from ninteg import integrate
-
-class units:
-    pcm = 1e-5  # per cent mille
 
 # --- Result container (dict + attribute access) ---
 class Result(dict):
@@ -46,7 +42,7 @@ class Result(dict):
 
 # --- Solver ---
 class Solver:
-    def transient(self, t_end=1.0, h0=1e-9, rtol=1e-6, verbose=False):
+    def transient(self, t_end=1.0, h0=1e-9, rtol=1e-6, verbose=False, u=None):
         """
         Run simulation and return structured result.
         """
@@ -54,7 +50,7 @@ class Solver:
         times = []
         states = []
 
-        for t, x, info in integrate((0, t_end), self.x, self.dynamics, h0=h0, rtol=rtol):
+        for t, x, info in integrate((0, t_end), self.x, self.dynamics, h0=h0, rtol=rtol, params=u):
             times.append(t)
             states.append(x.copy())
 
@@ -66,9 +62,17 @@ class Solver:
 
         return self.format_output(t, x, info)
 
-    def step_response (self, rho=100, t_end=10):
+    def step_response (self, u, rho=100, t_end=10):
         self.rho = lambda t: rho
-        return self.transient (t_end=t_end, verbose=False, rtol=1.E-9)
+        self.x = self.steady_state (u)
+        res = self.transient (t_end=t_end, verbose=False, rtol=1.E-9, u=u)
+        return res
+
+    def lyapunov (self, u):
+        x = self.steady_state (u)
+        jac = self.jacobian (x, u)
+        res = np.linalg.eigvals (jac)
+        return res
 
     def _print_step(self, t, x):
         print(f"time={t:12.6e}s x={x}")
@@ -79,9 +83,9 @@ class Solver:
     # --- Output formatting ---
     def _print_step(self, t, x):
         print(
-            f"time={t:12.6e}s "
-            f"N={x[0]*1e-6:12.6e} MW "
-            f"Temp={x[-1]:12.6e}K"
+            f"t={t:12.6e} s "
+            f"P={x[0]*1e-6:12.6e} MW "
+            f"T={x[-1]:12.6e} K"
         )
 
     def format_output(self, t, x, info):

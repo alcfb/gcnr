@@ -3,9 +3,10 @@ from gcnr import gcr1
 
 ntp = gcr1.model()
 
-ntp.steady_state()
+rho = 0
+eps = 0.1
 
-res = ntp.step_response()
+res = ntp.step_response(t_end=10, u=[rho, eps], rho=100)
 
 print (f"""
     # Time      : {res.time[-1]:9.3f} s
