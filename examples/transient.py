@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-from gcnr import models
+from gcnr import gcr1
 
-ntp = models.ntp_gcr()
-
-ntp.rho = lambda t: 100.0 if t > 1. else 0.0
-
-ntp.temp_feedback = -50.
+ntp = gcr1.model()
 
 ntp.steady_state()
 
-res = ntp.transient (5.0, verbose=False, rtol=1.E-9)
+res = ntp.step_response()
 
 print (f"""
     # Time      : {res.time[-1]:9.3f} s
